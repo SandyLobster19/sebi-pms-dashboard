@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEBI PMS Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #232733;
+    --border: #2d3348; --text: #e1e4ed; --text2: #8b90a0;
+    --accent: #6c8cff; --accent2: #4ecdc4; --accent3: #ff6b6b;
+    --green: #4ecdc4; --red: #ff6b6b; --yellow: #ffd93d;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:var(--bg); color:var(--text); overflow-x:hidden; }
+  .header { background:var(--surface); border-bottom:1px solid var(--border); padding:16px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+  .header h1 { font-size:20px; font-weight:600; }
+  .header h1 span { color:var(--accent); }
+  .header-meta { font-size:13px; color:var(--text2); }
+  .tabs { display:flex; gap:2px; background:var(--surface); padding:0 24px; border-bottom:1px solid var(--border); }
+  .tab { padding:12px 20px; font-size:14px; color:var(--text2); cursor:pointer; border-bottom:2px solid transparent; transition:all .2s; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .content { padding:20px 24px; max-width:1400px; margin:0 auto; }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px; }
+  .kpi { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; }
+  .kpi-label { font-size:12px; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
+  .kpi-value { font-size:28px; font-weight:700; }
+  .kpi-sub { font-size:12px; color:var(--text2); margin-top:4px; }
+  .kpi-value.green { color:var(--green); }
+  .kpi-value.blue { color:var(--accent); }
+  .chart-container { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+  .chart-title { font-size:15px; font-weight:600; margin-bottom:16px; }
+  .chart-canvas { width:100%; height:300px; position:relative; }
+  .chart-svg { width:100%; height:100%; }
+  .table-controls { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+  .search-input { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:8px 14px; color:var(--text); font-size:14px; width:300px; outline:none; }
+  .search-input:focus { border-color:var(--accent); }
+  .filter-btn { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:8px 14px; color:var(--text2); font-size:13px; cursor:pointer; }
+  .filter-btn.active { border-color:var(--accent); color:var(--accent); }
+  .data-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .data-table th { text-align:left; padding:10px 12px; color:var(--text2); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; white-space:nowrap; }
+  .data-table th:hover { color:var(--accent); }
+  .data-table th.sorted-asc::after { content:' \u25B2'; color:var(--accent); }
+  .data-table th.sorted-desc::after { content:' \u25BC'; color:var(--accent); }
+  .data-table td { padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .data-table tr:hover td { background:var(--surface2); }
+  .data-table .pm-name { max-width:300px; overflow:hidden; text-overflow:ellipsis; cursor:pointer; color:var(--accent); }
+  .data-table .pm-name:hover { text-decoration:underline; }
+  .data-table .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .table-wrapper { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:10px; }
+  .pagination { display:flex; justify-content:space-between; align-items:center; padding:12px; font-size:13px; color:var(--text2); }
+  .page-btns { display:flex; gap:4px; }
+  .page-btn { background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:4px 10px; color:var(--text); cursor:pointer; font-size:12px; }
+  .page-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .page-btn:hover { border-color:var(--accent); }
+  .detail-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; }
+  .detail-back { color:var(--accent); cursor:pointer; font-size:14px; }
+  .detail-back:hover { text-decoration:underline; }
+  .detail-name { font-size:22px; font-weight:700; margin-bottom:4px; }
+  .detail-meta { font-size:13px; color:var(--text2); }
+  .detail-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }
+  .charts-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:900px) { .charts-row { grid-template-columns:1fr; } }
+  .axis-label { font-size:10px; fill:var(--text2); }
+  .grid-line { stroke:var(--border); stroke-width:0.5; }
+  .chart-line { fill:none; stroke-width:2; }
+  .chart-area { opacity:0.15; }
+  .dot { r:3; opacity:0; transition:opacity .15s; }
+  .chart-svg:hover .dot { opacity:1; }
+  .tooltip { position:fixed; background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:10px 14px; font-size:12px; pointer-events:none; z-index:200; display:none; max-width:300px; }
+  .tooltip-title { font-weight:600; margin-bottom:4px; }
+  .loading { text-align:center; padding:60px; color:var(--text2); font-size:16px; }
+  .compare-select { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:8px; color:var(--text); font-size:13px; max-width:350px; }
+  .compare-row { display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .color-dot { width:12px; height:12px; border-radius:50%; display:inline-block; }
+
+  /* Raw data section */
+  .month-selector { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .month-btn { background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:4px 8px; color:var(--text2); cursor:pointer; font-size:11px; }
+  .month-btn:hover { border-color:var(--accent); color:var(--text); }
+  .month-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .month-btn.has-data { color:var(--green); }
+  .sheet-section { margin-bottom:16px; }
+  .sheet-header { background:var(--surface2); padding:10px 14px; border-radius:6px 6px 0 0; border:1px solid var(--border); border-bottom:none; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+  .sheet-header:hover { background:var(--border); }
+  .sheet-name { font-weight:600; font-size:13px; color:var(--accent); }
+  .sheet-rows { font-size:11px; color:var(--text2); }
+  .sheet-body { border:1px solid var(--border); border-radius:0 0 6px 6px; overflow-x:auto; display:none; }
+  .sheet-body.open { display:block; }
+  .raw-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Consolas','Monaco',monospace; }
+  .raw-table th { padding:6px 10px; text-align:left; color:var(--accent2); font-weight:500; border-bottom:1px solid var(--border); white-space:nowrap; font-size:11px; position:sticky; top:0; background:var(--surface); }
+  .raw-table td { padding:5px 10px; border-bottom:1px solid rgba(45,51,72,0.5); white-space:nowrap; }
+  .raw-table tr:hover td { background:var(--surface2); }
+  .raw-table .num-cell { text-align:right; color:var(--yellow); }
+  .raw-table .null-cell { color:var(--text2); font-style:italic; }
+  .detail-loading { text-align:center; padding:40px; color:var(--text2); }
+  .month-data-section { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .month-data-title { font-size:15px; font-weight:600; margin-bottom:4px; }
+  .month-data-meta { font-size:12px; color:var(--text2); margin-bottom:12px; }
+  .era-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .era-old { background:rgba(255,107,107,0.2); color:var(--red); }
+  .era-mid { background:rgba(255,217,61,0.2); color:var(--yellow); }
+  .era-new { background:rgba(78,205,196,0.2); color:var(--green); }
+  .expand-all-btn { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:6px 14px; color:var(--text); cursor:pointer; font-size:12px; margin-bottom:12px; }
+  .expand-all-btn:hover { border-color:var(--accent); color:var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>SEBI</span> PMS Dashboard</h1>
+  <div class="header-meta">Data loaded: <span id="dataDate">-</span> | PMs: <span id="pmCount">-</span> | Records: <span id="recordCount">-</span></div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="overview">Overview</div>
+  <div class="tab" data-tab="rankings">PM Rankings</div>
+  <div class="tab" data-tab="detail">PM Detail</div>
+  <div class="tab" data-tab="compare">Compare</div>
+</div>
+
+<div class="content">
+  <div id="overview" class="tab-content active">
+    <div class="kpi-grid" id="overviewKpis"></div>
+    <div class="chart-container">
+      <div class="chart-title">Industry AUM Trend (INR Crores)</div>
+      <div class="chart-canvas"><svg id="aumTrendChart" class="chart-svg"></svg></div>
+    </div>
+    <div class="charts-row">
+      <div class="chart-container">
+        <div class="chart-title">Active PMs Per Month</div>
+        <div class="chart-canvas"><svg id="pmCountChart" class="chart-svg"></svg></div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-title">Total Clients Trend</div>
+        <div class="chart-canvas"><svg id="clientsTrendChart" class="chart-svg"></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rankings" class="tab-content">
+    <div class="table-controls">
+      <input type="text" class="search-input" id="pmSearch" placeholder="Search PM name...">
+      <div class="filter-btn active" data-filter="all">All</div>
+      <div class="filter-btn" data-filter="top50">Top 50 AUM</div>
+      <div class="filter-btn" data-filter="new">New (2024+)</div>
+      <div class="filter-btn" data-filter="old">Old (pre-2020)</div>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table" id="pmTable">
+        <thead><tr>
+          <th data-col="rank">#</th>
+          <th data-col="pm_name">PM Name</th>
+          <th data-col="total_aum_crores" class="num">AUM (Cr)</th>
+          <th data-col="total_clients" class="num">Clients</th>
+          <th data-col="disc_aum_crores" class="num">Disc. AUM</th>
+          <th data-col="nondisc_aum_crores" class="num">Non-Disc. AUM</th>
+          <th data-col="era">Era</th>
+          <th data-col="total_months" class="num">Months</th>
+          <th data-col="year" class="num">Latest</th>
+        </tr></thead>
+        <tbody id="pmTableBody"></tbody>
+      </table>
+      <div class="pagination">
+        <span id="pageInfo"></span>
+        <div class="page-btns" id="pageBtns"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="detail" class="tab-content">
+    <div id="detailContent">
+      <p class="loading">Select a PM from the Rankings tab to view details.</p>
+    </div>
+  </div>
+
+  <div id="compare" class="tab-content">
+    <div class="compare-row">
+      <select class="compare-select" id="compare1"></select>
+      <span class="color-dot" style="background:var(--accent)"></span>
+      <span>vs</span>
+      <select class="compare-select" id="compare2"></select>
+      <span class="color-dot" style="background:var(--accent3)"></span>
+    </div>
+    <div class="charts-row">
+      <div class="chart-container">
+        <div class="chart-title">AUM Comparison (Cr)</div>
+        <div class="chart-canvas"><svg id="compareAumChart" class="chart-svg"></svg></div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-title">Clients Comparison</div>
+        <div class="chart-canvas"><svg id="compareClientsChart" class="chart-svg"></svg></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+/* All data in this dashboard comes from the locally generated dashboard_data.json
+   which is produced from the user's own SQLite database. No external/untrusted input. */
+
+let DATA = null;
+let pmSeriesMap = {};
+
+async function loadData() {
+  const resp = await fetch('dashboard_data.json');
+  DATA = await resp.json();
+  document.getElementById('dataDate').textContent = DATA.generated;
+  document.getElementById('pmCount').textContent = DATA.pm_latest.length;
+  document.getElementById('recordCount').textContent = DATA.pm_series.length.toLocaleString();
+  pmSeriesMap = {};
+  for (const r of DATA.pm_series) {
+    if (!pmSeriesMap[r.pm_name]) pmSeriesMap[r.pm_name] = [];
+    pmSeriesMap[r.pm_name].push(r);
+  }
+  renderOverview();
+  renderRankings();
+  setupCompare();
+}
+
+function fmt(n, dec) {
+  if (dec === undefined) dec = 0;
+  if (n == null || isNaN(n)) return '-';
+  if (Math.abs(n) >= 1e5) return (n/1e5).toFixed(1) + 'L';
+  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toFixed(dec).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function fmtCr(n) {
+  if (n == null || isNaN(n)) return '-';
+  if (Math.abs(n) >= 1e5) return '\u20B9' + (n/1e5).toFixed(1) + 'L Cr';
+  if (Math.abs(n) >= 1e3) return '\u20B9' + (n/1e3).toFixed(1) + 'K Cr';
+  return '\u20B9' + n.toFixed(1) + ' Cr';
+}
+function dateStr(y,m) { return y + '-' + String(m).padStart(2,'0'); }
+function escHtml(s) { var d=document.createElement('div'); d.textContent=s; return d.textContent; }
+
+// =================== SVG CHART ENGINE ===================
+function drawLineChart(svgId, datasets, options) {
+  if (!options) options = {};
+  var svg = document.getElementById(svgId);
+  if (!svg) return;
+  var rect = svg.getBoundingClientRect();
+  var W = rect.width || 800, H = rect.height || 300;
+  var pad = { top:20, right:20, bottom:40, left:70 };
+  var cW = W - pad.left - pad.right;
+  var cH = H - pad.top - pad.bottom;
+  var allX = [], allY = [];
+  for (var di=0; di<datasets.length; di++) {
+    for (var pi=0; pi<datasets[di].data.length; pi++) {
+      allX.push(datasets[di].data[pi].x);
+      allY.push(datasets[di].data[pi].y);
+    }
+  }
+  if (allX.length === 0) { while(svg.firstChild) svg.removeChild(svg.firstChild); return; }
+  var xMin = Math.min.apply(null,allX), xMax = Math.max.apply(null,allX);
+  var yMin = options.yMin != null ? options.yMin : 0;
+  var yMax = Math.max.apply(null,allY) * 1.1 || 1;
+  function sx(v) { return pad.left + ((v - xMin) / (xMax - xMin || 1)) * cW; }
+  function sy(v) { return pad.top + cH - ((v - yMin) / (yMax - yMin || 1)) * cH; }
+
+  var ns = 'http://www.w3.org/2000/svg';
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+  // Grid
+  var yTicks = 5;
+  for (var i=0; i<=yTicks; i++) {
+    var val = yMin + (yMax - yMin) * i / yTicks;
+    var y = sy(val);
+    var line = document.createElementNS(ns,'line');
+    line.setAttribute('x1',pad.left); line.setAttribute('y1',y);
+    line.setAttribute('x2',W-pad.right); line.setAttribute('y2',y);
+    line.setAttribute('class','grid-line');
+    svg.appendChild(line);
+    var txt = document.createElementNS(ns,'text');
+    txt.setAttribute('x',pad.left-8); txt.setAttribute('y',y+4);
+    txt.setAttribute('text-anchor','end'); txt.setAttribute('class','axis-label');
+    txt.textContent = fmt(val);
+    svg.appendChild(txt);
+  }
+
+  // X labels
+  var xLabels = options.xLabels || [];
+  var step = Math.max(1, Math.floor(xLabels.length / 10));
+  for (var i=0; i<xLabels.length; i+=step) {
+    var x = sx(i);
+    var txt = document.createElementNS(ns,'text');
+    txt.setAttribute('x',x); txt.setAttribute('y',H-8);
+    txt.setAttribute('text-anchor','middle'); txt.setAttribute('class','axis-label');
+    txt.textContent = xLabels[i];
+    svg.appendChild(txt);
+  }
+
+  // Datasets
+  var colors = ['#6c8cff','#4ecdc4','#ff6b6b','#ffd93d','#c084fc'];
+  for (var di=0; di<datasets.length; di++) {
+    var ds = datasets[di];
+    var color = ds.color || colors[di % colors.length];
+
+    if (options.area !== false && ds.data.length > 1) {
+      var areaD = 'M' + sx(ds.data[0].x) + ',' + sy(yMin);
+      for (var pi=0; pi<ds.data.length; pi++) areaD += ' L' + sx(ds.data[pi].x) + ',' + sy(ds.data[pi].y);
+      areaD += ' L' + sx(ds.data[ds.data.length-1].x) + ',' + sy(yMin) + ' Z';
+      var area = document.createElementNS(ns,'path');
+      area.setAttribute('d', areaD);
+      area.setAttribute('fill', color);
+      area.setAttribute('class','chart-area');
+      svg.appendChild(area);
+    }
+
+    if (ds.data.length > 0) {
+      var pts = '';
+      for (var pi=0; pi<ds.data.length; pi++) {
+        pts += sx(ds.data[pi].x) + ',' + sy(ds.data[pi].y) + ' ';
+      }
+      var poly = document.createElementNS(ns,'polyline');
+      poly.setAttribute('points', pts.trim());
+      poly.setAttribute('stroke', color);
+      poly.setAttribute('class','chart-line');
+      svg.appendChild(poly);
+    }
+
+    for (var pi=0; pi<ds.data.length; pi++) {
+      var p = ds.data[pi];
+      var circ = document.createElementNS(ns,'circle');
+      circ.setAttribute('cx', sx(p.x));
+      circ.setAttribute('cy', sy(p.y));
+      circ.setAttribute('class','dot');
+      circ.setAttribute('fill', color);
+      circ.setAttribute('data-tip', escHtml((ds.label||'') + ': ' + (p.label||'') + ' = ' + fmt(p.y,1)));
+      svg.appendChild(circ);
+    }
+  }
+
+  // Tooltips
+  svg.addEventListener('mouseover', function(e) {
+    if (e.target.classList && e.target.classList.contains('dot')) {
+      var tip = document.getElementById('tooltip');
+      var title = document.createElement('div');
+      title.className = 'tooltip-title';
+      title.textContent = e.target.getAttribute('data-tip');
+      while(tip.firstChild) tip.removeChild(tip.firstChild);
+      tip.appendChild(title);
+      tip.style.display = 'block';
+      tip.style.left = e.clientX + 12 + 'px';
+      tip.style.top = (e.clientY - 30) + 'px';
+    }
+  });
+  svg.addEventListener('mouseout', function(e) {
+    if (e.target.classList && e.target.classList.contains('dot')) {
+      document.getElementById('tooltip').style.display = 'none';
+    }
+  });
+}
+
+// =================== OVERVIEW ===================
+function renderOverview() {
+  var ind = DATA.industry;
+  var latest = ind[ind.length - 1];
+  var prev = ind.length > 1 ? ind[ind.length - 2] : latest;
+  var aumChange = (latest.total_aum && prev.total_aum) ?
+    ((latest.total_aum - prev.total_aum) / prev.total_aum * 100).toFixed(1) : null;
+
+  var kpiEl = document.getElementById('overviewKpis');
+  while(kpiEl.firstChild) kpiEl.removeChild(kpiEl.firstChild);
+  var kpis = [
+    {label:'Total Industry AUM', value:fmtCr(latest.total_aum), cls:'blue',
+     sub:dateStr(latest.year,latest.month) + (aumChange ? ' ' + (aumChange>0?'\u2191':'\u2193') + Math.abs(aumChange)+'% MoM' : '')},
+    {label:'Total Clients', value:fmt(latest.total_clients), cls:'', sub:dateStr(latest.year,latest.month)},
+    {label:'Active PMs', value:String(latest.pm_count), cls:'green', sub:'Reporting this month'},
+    {label:'Total PMs Tracked', value:String(DATA.pm_latest.length), cls:'', sub:'Since Jan 2018'},
+    {label:'Date Range', value:dateStr(ind[0].year,ind[0].month)+' \u2192 '+dateStr(latest.year,latest.month), cls:'',
+     sub:ind.length+' months of data', small:true}
+  ];
+  for (var k=0; k<kpis.length; k++) {
+    var card = document.createElement('div'); card.className='kpi';
+    var lbl = document.createElement('div'); lbl.className='kpi-label'; lbl.textContent=kpis[k].label;
+    var val = document.createElement('div'); val.className='kpi-value'+(kpis[k].cls?' '+kpis[k].cls:'');
+    if(kpis[k].small) val.style.fontSize='20px'; val.textContent=kpis[k].value;
+    var sub = document.createElement('div'); sub.className='kpi-sub'; sub.textContent=kpis[k].sub;
+    card.appendChild(lbl); card.appendChild(val); card.appendChild(sub);
+    kpiEl.appendChild(card);
+  }
+
+  var aumData=[], pmData=[], cliData=[], lbls=[];
+  for (var i=0; i<ind.length; i++) {
+    var r = ind[i]; var lbl2 = dateStr(r.year,r.month); lbls.push(lbl2);
+    aumData.push({x:i, y:r.total_aum||0, label:lbl2});
+    pmData.push({x:i, y:r.pm_count||0, label:lbl2});
+    cliData.push({x:i, y:r.total_clients||0, label:lbl2});
+  }
+  drawLineChart('aumTrendChart', [{data:aumData,label:'AUM',color:'#6c8cff'}], {xLabels:lbls});
+  drawLineChart('pmCountChart', [{data:pmData,label:'PMs',color:'#4ecdc4'}], {xLabels:lbls});
+  drawLineChart('clientsTrendChart', [{data:cliData,label:'Clients',color:'#ffd93d'}], {xLabels:lbls});
+}
+
+// =================== RANKINGS ===================
+var rankData = [];
+var rankSort = {col:'total_aum_crores', dir:'desc'};
+var rankPage = 0;
+var PAGE_SIZE = 30;
+var rankFilter = 'all';
+
+function renderRankings() { rankData = DATA.pm_latest.slice(); applySort(); }
+
+function applySort() {
+  var col=rankSort.col, dir=rankSort.dir==='asc'?1:-1;
+  rankData.sort(function(a,b) {
+    var va=a[col], vb=b[col];
+    if (va==null) va=-Infinity; if (vb==null) vb=-Infinity;
+    if (typeof va==='string') return dir*va.localeCompare(vb);
+    return dir*(va-vb);
+  });
+  renderTable();
+}
+
+function filterRankings(filter) {
+  rankFilter = filter;
+  rankData = DATA.pm_latest.filter(function(r) {
+    if (filter==='top50') return true;
+    if (filter==='new') return r.first_data_year>=2024;
+    if (filter==='old') return r.first_data_year<=2019;
+    return true;
+  });
+  if (filter==='top50') {
+    rankData.sort(function(a,b){return(b.total_aum_crores||0)-(a.total_aum_crores||0);});
+    rankData = rankData.slice(0,50);
+  }
+  var search = document.getElementById('pmSearch').value.toLowerCase();
+  if (search) rankData = rankData.filter(function(r){return r.pm_name.toLowerCase().indexOf(search)!==-1;});
+  rankPage=0; applySort();
+}
+
+function renderTable() {
+  var start = rankPage * PAGE_SIZE;
+  var page = rankData.slice(start, start+PAGE_SIZE);
+  var tbody = document.getElementById('pmTableBody');
+  while(tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+  for (var i=0; i<page.length; i++) {
+    var r = page[i];
+    var tr = document.createElement('tr');
+    var cells = [
+      {text:String(start+i+1), cls:'num'},
+      {text:r.pm_name, cls:'pm-name', click:true},
+      {text:fmtCr(r.total_aum_crores), cls:'num'},
+      {text:fmt(r.total_clients), cls:'num'},
+      {text:fmtCr(r.disc_aum_crores), cls:'num'},
+      {text:fmtCr(r.nondisc_aum_crores), cls:'num'},
+      {text:r.era||'-', cls:''},
+      {text:String(r.total_months||'-'), cls:'num'},
+      {text:dateStr(r.year,r.month), cls:'num'}
+    ];
+    for (var j=0; j<cells.length; j++) {
+      var td = document.createElement('td');
+      if (cells[j].cls) td.className = cells[j].cls;
+      td.textContent = cells[j].text;
+      if (cells[j].click) {
+        (function(pmName) {
+          td.addEventListener('click', function(){showDetail(pmName);});
+        })(r.pm_name);
+      }
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+
+  var ths = document.querySelectorAll('#pmTable th');
+  for (var i=0; i<ths.length; i++) {
+    ths[i].classList.remove('sorted-asc','sorted-desc');
+    if (ths[i].getAttribute('data-col')===rankSort.col) ths[i].classList.add('sorted-'+rankSort.dir);
+  }
+
+  var totalPages = Math.ceil(rankData.length / PAGE_SIZE);
+  document.getElementById('pageInfo').textContent = (start+1)+'-'+Math.min(start+PAGE_SIZE,rankData.length)+' of '+rankData.length;
+  var btnsEl = document.getElementById('pageBtns');
+  while(btnsEl.firstChild) btnsEl.removeChild(btnsEl.firstChild);
+  for (var p=0; p<totalPages; p++) {
+    var btn = document.createElement('div');
+    btn.className = 'page-btn'+(p===rankPage?' active':'');
+    btn.textContent = String(p+1);
+    (function(pg){btn.addEventListener('click',function(){rankPage=pg;renderTable();});})(p);
+    btnsEl.appendChild(btn);
+  }
+}
+
+// =================== PM DETAIL ===================
+var currentDetailMonth = null;
+var currentDetailData = null;
+var currentFundData = null;
+
+function showDetail(pmName) {
+  var tabs = document.querySelectorAll('.tab');
+  for(var i=0;i<tabs.length;i++) tabs[i].classList.toggle('active',tabs[i].getAttribute('data-tab')==='detail');
+  var contents = document.querySelectorAll('.tab-content');
+  for(var i=0;i<contents.length;i++) contents[i].classList.toggle('active',contents[i].id==='detail');
+
+  var dc = document.getElementById('detailContent');
+  while(dc.firstChild) dc.removeChild(dc.firstChild);
+  var loadMsg = document.createElement('p');
+  loadMsg.className = 'detail-loading';
+  loadMsg.textContent = 'Loading all data for ' + pmName + '...';
+  dc.appendChild(loadMsg);
+
+  // Fetch both fund data and raw detail data in parallel
+  Promise.all([
+    fetch('/api/pm_funds?pm=' + encodeURIComponent(pmName)).then(function(r){return r.json();}),
+    fetch('/api/pm_detail?pm=' + encodeURIComponent(pmName)).then(function(r){return r.json();})
+  ]).then(function(results){
+    currentFundData = results[0];
+    currentDetailData = results[1];
+    renderFullDetail(results[0], results[1]);
+  }).catch(function(err){
+    while(dc.firstChild) dc.removeChild(dc.firstChild);
+    var errP = document.createElement('p');
+    errP.className = 'detail-loading';
+    errP.textContent = 'Detailed PM drill-down requires the local server (1.4 GB database).';
+    dc.appendChild(errP);
+    var errP2 = document.createElement('p');
+    errP2.className = 'detail-loading';
+    errP2.textContent = 'Use the Overview, Rankings, and Compare tabs to explore all 636 PMs.';
+    dc.appendChild(errP2);
+  });
+}
+
+function renderFullDetail(fundData, rawData) {
+  var dc = document.getElementById('detailContent');
+  while(dc.firstChild) dc.removeChild(dc.firstChild);
+
+  var pmName = fundData.pm_name;
+  var series = fundData.summaries || [];
+  var latest = series[series.length-1] || {};
+  var first = series[0] || {};
+  var monthKeys = Object.keys(rawData.months).sort();
+  var fundNames = Object.keys(fundData.fund_aum_history);
+
+  var aumGrowth = '-';
+  if (series.length > 12) {
+    var y1 = series[series.length-13].total_aum_crores;
+    var y2 = latest.total_aum_crores;
+    if (y1 && y2) aumGrowth = ((y2-y1)/y1*100).toFixed(1) + '%';
+  }
+
+  // === HEADER ===
+  var hdr = document.createElement('div'); hdr.className='detail-header';
+  var hdrInner = document.createElement('div');
+  var back = document.createElement('div'); back.className='detail-back'; back.textContent='\u2190 Back to Rankings';
+  back.addEventListener('click',function(){switchTab('rankings');});
+  var name = document.createElement('div'); name.className='detail-name'; name.textContent=pmName;
+  var meta = document.createElement('div'); meta.className='detail-meta';
+  meta.textContent = dateStr(first.year,first.month) + ' to ' + dateStr(latest.year,latest.month)
+    + ' \u00B7 ' + series.length + ' months \u00B7 ' + fundNames.length + ' funds/strategies';
+  hdrInner.appendChild(back); hdrInner.appendChild(name); hdrInner.appendChild(meta);
+  hdr.appendChild(hdrInner); dc.appendChild(hdr);
+
+  // === KPIs ===
+  var kpiGrid = document.createElement('div'); kpiGrid.className='kpi-grid';
+  var dkpis = [
+    {label:'Total AUM', value:fmtCr(latest.total_aum_crores), cls:'blue'},
+    {label:'Total Clients', value:fmt(latest.total_clients), cls:''},
+    {label:'1Y AUM Growth', value:aumGrowth, cls:'green'},
+    {label:'Disc. AUM', value:fmtCr(latest.disc_aum_crores), cls:''},
+    {label:'Active Funds', value:String(fundNames.length), cls:'blue'},
+    {label:'Data Months', value:String(series.length), cls:''}
+  ];
+  for (var k=0;k<dkpis.length;k++) {
+    var card = document.createElement('div'); card.className='kpi';
+    var lbl = document.createElement('div'); lbl.className='kpi-label'; lbl.textContent=dkpis[k].label;
+    var val = document.createElement('div'); val.className='kpi-value'+(dkpis[k].cls?' '+dkpis[k].cls:''); val.textContent=dkpis[k].value;
+    card.appendChild(lbl); card.appendChild(val); kpiGrid.appendChild(card);
+  }
+  dc.appendChild(kpiGrid);
+
+  // === SERVICES OFFERED ===
+  if (fundData.services && fundData.services.length > 0) {
+    var svcSec = buildSection('Services Offered');
+    var svcTbl = document.createElement('table'); svcTbl.className='raw-table';
+    var sthead = document.createElement('thead'); var shrow = document.createElement('tr');
+    ['Service Type', 'Offered'].forEach(function(h){ var th=document.createElement('th'); th.textContent=h; shrow.appendChild(th); });
+    sthead.appendChild(shrow); svcTbl.appendChild(sthead);
+    var stbod = document.createElement('tbody');
+    fundData.services.forEach(function(s){
+      var tr = document.createElement('tr');
+      var keys = Object.keys(s);
+      var svcName = s[keys[1]] || s[keys[0]] || '-';
+      var offered = s[keys[2]] || s[keys[keys.length-1]] || '-';
+      [svcName, offered].forEach(function(v){ var td=document.createElement('td'); td.textContent=String(v); tr.appendChild(td); });
+      stbod.appendChild(tr);
+    });
+    svcTbl.appendChild(stbod); svcSec.appendChild(svcTbl); dc.appendChild(svcSec);
+  }
+
+  // === GENERAL INFO (Client Breakdown) ===
+  if (fundData.general_info && fundData.general_info.data.length > 0) {
+    var giSec = buildSection('Client & AUM Breakdown (' + fundData.general_info.month + ')');
+    var giTbl = buildDataTable(fundData.general_info.data);
+    giSec.appendChild(giTbl); dc.appendChild(giSec);
+  }
+
+  // === SUMMARY AUM (Disc / Non-Disc / Advisory) ===
+  if (fundData.summary_aum && fundData.summary_aum.data.length > 0) {
+    var saSec = buildSection('AUM by Service Type (' + fundData.summary_aum.month + ')');
+    var saTbl = buildDataTable(fundData.summary_aum.data);
+    saSec.appendChild(saTbl); dc.appendChild(saSec);
+  }
+
+  // === TOTAL AUM & CLIENTS CHARTS ===
+  var chartsRow = document.createElement('div'); chartsRow.className='charts-row';
+  chartsRow.appendChild(buildChartBox('detailAumChart', 'Total AUM Trend (Cr)'));
+  chartsRow.appendChild(buildChartBox('detailClientsChart', 'Total Clients Trend'));
+  dc.appendChild(chartsRow);
+
+  // === FUND PERFORMANCE TABLE ===
+  if (fundData.performance && fundData.performance.data.length > 0) {
+    var perfSec = buildSection('Fund Performance - TWRR Returns % (' + fundData.performance.month + ')');
+    var perfTbl = buildDataTable(fundData.performance.data);
+    perfSec.appendChild(perfTbl); dc.appendChild(perfSec);
+  }
+
+  // === FUND AUM TABLE (latest month) ===
+  if (fundNames.length > 0) {
+    var faumSec = buildSection('Fund-wise AUM Breakdown (Latest)');
+    // Build a summary table from fund_aum_history (latest entry per fund)
+    var faumRows = [];
+    fundNames.forEach(function(fn){
+      var hist = fundData.fund_aum_history[fn];
+      var latestEntry = hist[hist.length-1];
+      faumRows.push({name:fn, date:latestEntry.date, aum:latestEntry.aum,
+        months:hist.length,
+        first_aum: hist[0].aum,
+        growth: (hist.length>1 && hist[0].aum && hist[0].aum > 0) ?
+          ((latestEntry.aum - hist[0].aum) / hist[0].aum * 100).toFixed(1) + '%' : '-'
+      });
+    });
+    faumRows.sort(function(a,b){return (b.aum||0)-(a.aum||0);});
+
+    var ftbl = document.createElement('table'); ftbl.className='raw-table';
+    var fthead = document.createElement('thead'); var fhrow = document.createElement('tr');
+    ['Fund / Strategy', 'Latest AUM (Cr)', 'As Of', 'Months', 'Total Growth'].forEach(function(h){
+      var th=document.createElement('th'); th.textContent=h; fhrow.appendChild(th);
+    });
+    fthead.appendChild(fhrow); ftbl.appendChild(fthead);
+    var ftbod = document.createElement('tbody');
+    faumRows.forEach(function(r){
+      var tr = document.createElement('tr');
+      var vals = [r.name, r.aum != null ? r.aum.toLocaleString(undefined,{maximumFractionDigits:2}) : '-', r.date, r.months, r.growth];
+      vals.forEach(function(v,i){
+        var td=document.createElement('td');
+        td.textContent=String(v);
+        if(i>=1) td.className='num-cell';
+        tr.appendChild(td);
+      });
+      ftbod.appendChild(tr);
+    });
+    ftbl.appendChild(ftbod); faumSec.appendChild(ftbl); dc.appendChild(faumSec);
+  }
+
+  // === FUND AUM TREND CHART (top funds) ===
+  if (fundNames.length > 0) {
+    var fundChartSec = buildChartBox('fundAumTrendChart', 'Fund AUM Trends (Top 5 by AUM)');
+    fundChartSec.querySelector('.chart-canvas').style.height = '350px';
+    dc.appendChild(fundChartSec);
+  }
+
+  // === FUND FLOWS ===
+  if (fundData.fund_flows && fundData.fund_flows.data.length > 0) {
+    var ffSec = buildSection('Fund Flows (' + fundData.fund_flows.month + ')');
+    var ffTbl = buildDataTable(fundData.fund_flows.data);
+    ffSec.appendChild(ffTbl); dc.appendChild(ffSec);
+  }
+
+  // === TURNOVER ===
+  if (fundData.turnover && fundData.turnover.data.length > 0) {
+    var tSec = buildSection('Portfolio Turnover (' + fundData.turnover.month + ')');
+    var tTbl = buildDataTable(fundData.turnover.data);
+    tSec.appendChild(tTbl); dc.appendChild(tSec);
+  }
+
+  // === COMPLAINTS ===
+  if (fundData.complaints && fundData.complaints.data.length > 0) {
+    var cSec = buildSection('Complaints (' + fundData.complaints.month + ')');
+    var cTbl = buildDataTable(fundData.complaints.data);
+    cSec.appendChild(cTbl); dc.appendChild(cSec);
+  }
+
+  // === RAW DATA BROWSER ===
+  var rawTitle = document.createElement('div');
+  rawTitle.className = 'chart-title';
+  rawTitle.textContent = 'Raw Data Browser (' + monthKeys.length + ' months)';
+  rawTitle.style.marginTop = '24px'; rawTitle.style.marginBottom = '12px';
+  dc.appendChild(rawTitle);
+
+  var monthSel = document.createElement('div'); monthSel.className='month-selector'; monthSel.id='monthSelector';
+  for (var mi=monthKeys.length-1; mi>=0; mi--) {
+    var mk = monthKeys[mi];
+    var mbtn = document.createElement('div');
+    mbtn.className = 'month-btn has-data';
+    mbtn.textContent = mk;
+    mbtn.setAttribute('data-month', mk);
+    (function(mkey){ mbtn.addEventListener('click', function(){ selectMonth(mkey); }); })(mk);
+    monthSel.appendChild(mbtn);
+  }
+  dc.appendChild(monthSel);
+  var rawContainer = document.createElement('div'); rawContainer.id='rawDataContainer';
+  dc.appendChild(rawContainer);
+
+  // === DRAW ALL CHARTS ===
+  var labels = [];
+  for (var i=0;i<series.length;i++) labels.push(dateStr(series[i].year,series[i].month));
+
+  setTimeout(function() {
+    var aumD=[],cliD=[];
+    for(var i=0;i<series.length;i++){
+      aumD.push({x:i,y:series[i].total_aum_crores||0,label:labels[i]});
+      cliD.push({x:i,y:series[i].total_clients||0,label:labels[i]});
+    }
+    drawLineChart('detailAumChart',[{data:aumD,label:'AUM',color:'#6c8cff'}],{xLabels:labels});
+    drawLineChart('detailClientsChart',[{data:cliD,label:'Clients',color:'#4ecdc4'}],{xLabels:labels});
+
+    // Fund AUM trends (top 5)
+    if (fundNames.length > 0) {
+      var sorted = fundNames.slice().sort(function(a,b){
+        var ah = fundData.fund_aum_history[a]; var bh = fundData.fund_aum_history[b];
+        return (bh[bh.length-1].aum||0) - (ah[ah.length-1].aum||0);
+      });
+      var topFunds = sorted.slice(0, 5);
+      var allDates = {};
+      topFunds.forEach(function(fn){
+        fundData.fund_aum_history[fn].forEach(function(e){ allDates[e.date]=true; });
+      });
+      var dates = Object.keys(allDates).sort();
+      var dateIdx = {}; dates.forEach(function(d,i){dateIdx[d]=i;});
+      var colors = ['#6c8cff','#4ecdc4','#ff6b6b','#ffd93d','#c084fc'];
+      var datasets = topFunds.map(function(fn, fi){
+        return {
+          label: fn.substring(0,35),
+          color: colors[fi],
+          data: fundData.fund_aum_history[fn].map(function(e){
+            return {x:dateIdx[e.date], y:e.aum||0, label:e.date};
+          })
+        };
+      });
+      drawLineChart('fundAumTrendChart', datasets, {xLabels:dates, area:false});
+    }
+  }, 100);
+
+  if (monthKeys.length > 0) selectMonth(monthKeys[monthKeys.length-1]);
+}
+
+// Helper: build a section container
+function buildSection(title) {
+  var sec = document.createElement('div'); sec.className='month-data-section';
+  var t = document.createElement('div'); t.className='chart-title'; t.textContent=title;
+  sec.appendChild(t);
+  return sec;
+}
+
+// Helper: build a chart container with SVG
+function buildChartBox(svgId, title) {
+  var box = document.createElement('div'); box.className='chart-container';
+  var t = document.createElement('div'); t.className='chart-title'; t.textContent=title;
+  var cv = document.createElement('div'); cv.className='chart-canvas';
+  var svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.id=svgId; svg.setAttribute('class','chart-svg');
+  cv.appendChild(svg); box.appendChild(t); box.appendChild(cv);
+  return box;
+}
+
+// Helper: build a table from array of {key:value} objects
+function buildDataTable(rows) {
+  if (!rows || rows.length===0) return document.createElement('div');
+  // Collect all columns
+  var allCols=[]; var colSet={};
+  rows.forEach(function(r){
+    Object.keys(r).forEach(function(k){
+      if(!colSet[k]){colSet[k]=true; allCols.push(k);}
+    });
+  });
+  var shortCols = allCols.map(function(c){
+    var parts=c.split(' | '); var s=parts[parts.length-1];
+    return s.length>40 ? s.substring(0,37)+'...' : s;
+  });
+
+  var wrapper = document.createElement('div'); wrapper.style.overflowX='auto';
+  var tbl = document.createElement('table'); tbl.className='raw-table';
+  var thead = document.createElement('thead'); var hrow=document.createElement('tr');
+  allCols.forEach(function(c,i){
+    var th=document.createElement('th'); th.textContent=shortCols[i]; th.title=c; hrow.appendChild(th);
+  });
+  thead.appendChild(hrow); tbl.appendChild(thead);
+  var tbod = document.createElement('tbody');
+  rows.forEach(function(r){
+    var tr=document.createElement('tr');
+    allCols.forEach(function(c){
+      var td=document.createElement('td');
+      var v=r[c];
+      if(v===null||v===undefined){td.textContent='—';td.className='null-cell';}
+      else if(typeof v==='number'){td.textContent=v.toLocaleString(undefined,{maximumFractionDigits:4});td.className='num-cell';}
+      else{td.textContent=String(v);}
+      tr.appendChild(td);
+    });
+    tbod.appendChild(tr);
+  });
+  tbl.appendChild(tbod); wrapper.appendChild(tbl);
+  return wrapper;
+}
+
+function selectMonth(monthKey) {
+  currentDetailMonth = monthKey;
+  // Update button states
+  var btns = document.querySelectorAll('#monthSelector .month-btn');
+  for (var i=0;i<btns.length;i++) {
+    btns[i].classList.toggle('active', btns[i].getAttribute('data-month')===monthKey);
+  }
+  renderMonthData(monthKey);
+}
+
+function renderMonthData(monthKey) {
+  var container = document.getElementById('rawDataContainer');
+  while(container.firstChild) container.removeChild(container.firstChild);
+
+  var mdata = currentDetailData.months[monthKey];
+  if (!mdata) { return; }
+
+  var section = document.createElement('div'); section.className='month-data-section';
+
+  // Title with era badge
+  var titleRow = document.createElement('div'); titleRow.style.display='flex'; titleRow.style.gap='12px'; titleRow.style.alignItems='center';
+  var title = document.createElement('div'); title.className='month-data-title';
+  title.textContent = monthKey + ' Data';
+  titleRow.appendChild(title);
+  var badge = document.createElement('span');
+  badge.className = 'era-badge era-' + mdata.era;
+  badge.textContent = mdata.era === 'old' ? 'Old Format (6 sheets)' : mdata.era === 'mid' ? 'Mid Format (15 sheets)' : 'New Format (18 sheets)';
+  titleRow.appendChild(badge);
+  section.appendChild(titleRow);
+
+  var sheetCount = Object.keys(mdata.sheets).length;
+  var metaDiv = document.createElement('div'); metaDiv.className='month-data-meta';
+  metaDiv.textContent = sheetCount + ' sheets loaded';
+  section.appendChild(metaDiv);
+
+  // Expand/Collapse all button
+  var expandBtn = document.createElement('button'); expandBtn.className='expand-all-btn';
+  expandBtn.textContent = 'Expand All Sheets';
+  var allExpanded = false;
+  expandBtn.addEventListener('click', function(){
+    allExpanded = !allExpanded;
+    expandBtn.textContent = allExpanded ? 'Collapse All Sheets' : 'Expand All Sheets';
+    var bodies = section.querySelectorAll('.sheet-body');
+    for(var i=0;i<bodies.length;i++) {
+      if(allExpanded) bodies[i].classList.add('open');
+      else bodies[i].classList.remove('open');
+    }
+  });
+  section.appendChild(expandBtn);
+
+  // Render each sheet
+  var sheetNames = Object.keys(mdata.sheets);
+  for (var si=0; si<sheetNames.length; si++) {
+    var sname = sheetNames[si];
+    var rows = mdata.sheets[sname];
+    var sheetSec = document.createElement('div'); sheetSec.className='sheet-section';
+
+    // Header
+    var sheetHdr = document.createElement('div'); sheetHdr.className='sheet-header';
+    var snamDiv = document.createElement('span'); snamDiv.className='sheet-name'; snamDiv.textContent=sname;
+    var srowDiv = document.createElement('span'); srowDiv.className='sheet-rows'; srowDiv.textContent=rows.length+' rows';
+    sheetHdr.appendChild(snamDiv); sheetHdr.appendChild(srowDiv);
+    sheetSec.appendChild(sheetHdr);
+
+    // Body (hidden by default)
+    var sheetBody = document.createElement('div'); sheetBody.className='sheet-body';
+
+    // Build table from row data
+    if (rows.length > 0) {
+      var allCols = [];
+      var colSet = {};
+      for (var ri=0; ri<rows.length; ri++) {
+        var keys = Object.keys(rows[ri]);
+        for (var ki=0; ki<keys.length; ki++) {
+          if (!colSet[keys[ki]]) { colSet[keys[ki]]=true; allCols.push(keys[ki]); }
+        }
+      }
+
+      // Simplify column names: remove long prefixes
+      var shortCols = [];
+      for (var ci=0; ci<allCols.length; ci++) {
+        var col = allCols[ci];
+        // Shorten: take last part after " | " if present
+        var parts = col.split(' | ');
+        var short = parts[parts.length-1];
+        // Further shorten very long names
+        if (short.length > 40) short = short.substring(0,37) + '...';
+        shortCols.push(short);
+      }
+
+      var tbl = document.createElement('table'); tbl.className='raw-table';
+      var thead = document.createElement('thead');
+      var hrow = document.createElement('tr');
+      for (var ci=0; ci<allCols.length; ci++) {
+        var th = document.createElement('th');
+        th.textContent = shortCols[ci];
+        th.title = allCols[ci]; // full name on hover
+        hrow.appendChild(th);
+      }
+      thead.appendChild(hrow); tbl.appendChild(thead);
+
+      var tbod = document.createElement('tbody');
+      for (var ri=0; ri<rows.length; ri++) {
+        var tr = document.createElement('tr');
+        for (var ci=0; ci<allCols.length; ci++) {
+          var td = document.createElement('td');
+          var val = rows[ri][allCols[ci]];
+          if (val === null || val === undefined) {
+            td.textContent = 'null';
+            td.className = 'null-cell';
+          } else if (typeof val === 'number') {
+            td.textContent = val.toLocaleString(undefined, {maximumFractionDigits:4});
+            td.className = 'num-cell';
+          } else {
+            td.textContent = String(val);
+          }
+          tr.appendChild(td);
+        }
+        tbod.appendChild(tr);
+      }
+      tbl.appendChild(tbod);
+      sheetBody.appendChild(tbl);
+    }
+
+    sheetSec.appendChild(sheetBody);
+    section.appendChild(sheetSec);
+
+    // Toggle on header click
+    (function(body) {
+      sheetHdr.addEventListener('click', function(){
+        body.classList.toggle('open');
+      });
+    })(sheetBody);
+  }
+
+  container.appendChild(section);
+}
+
+// =================== COMPARE ===================
+function setupCompare() {
+  var pms = DATA.pm_latest.slice().sort(function(a,b){return(b.total_aum_crores||0)-(a.total_aum_crores||0);});
+  var sels = ['compare1','compare2'];
+  for (var s=0; s<sels.length; s++) {
+    var el = document.getElementById(sels[s]);
+    while(el.firstChild) el.removeChild(el.firstChild);
+    for (var i=0; i<pms.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = pms[i].pm_name;
+      opt.textContent = pms[i].pm_name + ' (' + fmtCr(pms[i].total_aum_crores) + ')';
+      el.appendChild(opt);
+    }
+  }
+  if (pms.length>1) document.getElementById('compare2').selectedIndex=1;
+  document.getElementById('compare1').addEventListener('change', renderCompare);
+  document.getElementById('compare2').addEventListener('change', renderCompare);
+  renderCompare();
+}
+
+function renderCompare() {
+  var pm1 = document.getElementById('compare1').value;
+  var pm2 = document.getElementById('compare2').value;
+  var s1 = pmSeriesMap[pm1]||[], s2 = pmSeriesMap[pm2]||[];
+  var allDates = {};
+  var i;
+  for(i=0;i<s1.length;i++) allDates[dateStr(s1[i].year,s1[i].month)]=true;
+  for(i=0;i<s2.length;i++) allDates[dateStr(s2[i].year,s2[i].month)]=true;
+  var dates = Object.keys(allDates).sort();
+  var dateIdx = {};
+  for(i=0;i<dates.length;i++) dateIdx[dates[i]]=i;
+
+  function mkData(series, field) {
+    var out=[];
+    for(var i=0;i<series.length;i++) {
+      out.push({x:dateIdx[dateStr(series[i].year,series[i].month)], y:series[i][field]||0, label:dateStr(series[i].year,series[i].month)});
+    }
+    return out;
+  }
+
+  setTimeout(function() {
+    drawLineChart('compareAumChart', [
+      {data:mkData(s1,'total_aum_crores'),label:pm1.substring(0,30),color:'#6c8cff'},
+      {data:mkData(s2,'total_aum_crores'),label:pm2.substring(0,30),color:'#ff6b6b'}
+    ], {xLabels:dates, area:false});
+    drawLineChart('compareClientsChart', [
+      {data:mkData(s1,'total_clients'),label:pm1.substring(0,30),color:'#6c8cff'},
+      {data:mkData(s2,'total_clients'),label:pm2.substring(0,30),color:'#ff6b6b'}
+    ], {xLabels:dates, area:false});
+  }, 50);
+}
+
+// =================== TAB SWITCHING ===================
+function switchTab(tabName) {
+  var tabs = document.querySelectorAll('.tab');
+  for(var i=0;i<tabs.length;i++) tabs[i].classList.toggle('active',tabs[i].getAttribute('data-tab')===tabName);
+  var contents = document.querySelectorAll('.tab-content');
+  for(var i=0;i<contents.length;i++) contents[i].classList.toggle('active',contents[i].id===tabName);
+}
+
+var tabEls = document.querySelectorAll('.tab');
+for(var i=0;i<tabEls.length;i++) {
+  (function(tab){tab.addEventListener('click',function(){switchTab(tab.getAttribute('data-tab'));});})(tabEls[i]);
+}
+
+// Table header sorting
+var ths = document.querySelectorAll('#pmTable th');
+for(var i=0;i<ths.length;i++) {
+  (function(th){
+    th.addEventListener('click',function(){
+      var col=th.getAttribute('data-col'); if(!col) return;
+      if(rankSort.col===col) rankSort.dir=rankSort.dir==='asc'?'desc':'asc';
+      else {rankSort.col=col; rankSort.dir='desc';}
+      applySort();
+    });
+  })(ths[i]);
+}
+
+document.getElementById('pmSearch').addEventListener('input',function(){filterRankings(rankFilter);});
+
+var filterBtns = document.querySelectorAll('.filter-btn');
+for(var i=0;i<filterBtns.length;i++) {
+  (function(btn){
+    btn.addEventListener('click',function(){
+      var all=document.querySelectorAll('.filter-btn');
+      for(var j=0;j<all.length;j++) all[j].classList.remove('active');
+      btn.classList.add('active');
+      filterRankings(btn.getAttribute('data-filter'));
+    });
+  })(filterBtns[i]);
+}
+
+// =================== INIT ===================
+loadData().catch(function(err) {
+  var c = document.querySelector('.content');
+  while(c.firstChild) c.removeChild(c.firstChild);
+  var div = document.createElement('div'); div.className='loading';
+  var p1 = document.createElement('p'); p1.textContent='Failed to load data. Make sure dashboard_data.json exists in the same folder.';
+  var p2 = document.createElement('p'); p2.style.color='var(--accent3)'; p2.style.marginTop='8px'; p2.textContent=err.message;
+  div.appendChild(p1); div.appendChild(p2); c.appendChild(div);
+});
+</script>
+</body>
+</html>
