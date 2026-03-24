@@ -634,21 +634,136 @@ function showDetail(pmName) {
   loadMsg.textContent = 'Loading all data for ' + pmName + '...';
   dc.appendChild(loadMsg);
 
-  // Fetch both fund data and raw detail data in parallel
+  // Try API first (local server), fallback to static data
   Promise.all([
-    fetch('/api/pm_funds?pm=' + encodeURIComponent(pmName)).then(function(r){return r.json();}),
-    fetch('/api/pm_detail?pm=' + encodeURIComponent(pmName)).then(function(r){return r.json();})
+    fetch('/api/pm_funds?pm=' + encodeURIComponent(pmName)).then(function(r){
+      if (!r.ok) throw new Error('not available');
+      return r.text().then(function(t){ if(t[0]==='<') throw new Error('html'); return JSON.parse(t); });
+    }),
+    fetch('/api/pm_detail?pm=' + encodeURIComponent(pmName)).then(function(r){
+      if (!r.ok) throw new Error('not available');
+      return r.text().then(function(t){ if(t[0]==='<') throw new Error('html'); return JSON.parse(t); });
+    })
   ]).then(function(results){
     currentFundData = results[0];
     currentDetailData = results[1];
     renderFullDetail(results[0], results[1]);
-  }).catch(function(err){
-    while(dc.firstChild) dc.removeChild(dc.firstChild);
-    var errP = document.createElement('p');
-    errP.className = 'detail-loading';
-    errP.textContent = 'Error: ' + err.message + '. Make sure server.py is running.';
-    dc.appendChild(errP);
+  }).catch(function(){
+    renderStaticDetail(pmName);
   });
+}
+
+function renderStaticDetail(pmName) {
+  var dc = document.getElementById('detailContent');
+  while(dc.firstChild) dc.removeChild(dc.firstChild);
+
+  var series = pmSeriesMap[pmName] || [];
+  var pmInfo = null;
+  for (var i=0; i<DATA.pm_latest.length; i++) {
+    if (DATA.pm_latest[i].pm_name === pmName) { pmInfo = DATA.pm_latest[i]; break; }
+  }
+  if (!series.length && !pmInfo) {
+    var msg = document.createElement('p'); msg.className='detail-loading';
+    msg.textContent = 'No data found for ' + pmName;
+    dc.appendChild(msg); return;
+  }
+
+  var latest = series.length ? series[series.length-1] : {};
+  var first = series.length ? series[0] : {};
+
+  // Header
+  var hdr = document.createElement('div'); hdr.className='detail-header';
+  var hdrInner = document.createElement('div');
+  var back = document.createElement('div'); back.className='detail-back'; back.textContent='\u2190 Back to Rankings';
+  back.addEventListener('click',function(){switchTab('rankings');});
+  var namEl = document.createElement('div'); namEl.className='detail-name'; namEl.textContent=pmName;
+  var meta = document.createElement('div'); meta.className='detail-meta';
+  meta.textContent = dateStr(first.year,first.month) + ' to ' + dateStr(latest.year,latest.month) + ' \u00B7 ' + series.length + ' months of data';
+  hdrInner.appendChild(back); hdrInner.appendChild(namEl); hdrInner.appendChild(meta);
+  hdr.appendChild(hdrInner); dc.appendChild(hdr);
+
+  // KPIs
+  var aumGrowth = '-';
+  if (series.length > 12) {
+    var y1 = series[series.length-13].total_aum_crores;
+    var y2 = latest.total_aum_crores;
+    if (y1 && y2) aumGrowth = ((y2-y1)/y1*100).toFixed(1) + '%';
+  }
+  var kpiGrid = document.createElement('div'); kpiGrid.className='kpi-grid';
+  var dkpis = [
+    {label:'Total AUM', value:fmtCr(latest.total_aum_crores), cls:'blue'},
+    {label:'Total Clients', value:fmt(latest.total_clients), cls:''},
+    {label:'1Y AUM Growth', value:aumGrowth, cls:'green'},
+    {label:'Disc. AUM', value:fmtCr(latest.disc_aum_crores), cls:''},
+    {label:'Monthly Sales', value:fmtCr(latest.gross_sales_crores), cls:''},
+    {label:'Data Months', value:String(series.length), cls:''}
+  ];
+  for (var k=0;k<dkpis.length;k++) {
+    var card = document.createElement('div'); card.className='kpi';
+    var lbl = document.createElement('div'); lbl.className='kpi-label'; lbl.textContent=dkpis[k].label;
+    var val = document.createElement('div'); val.className='kpi-value'+(dkpis[k].cls?' '+dkpis[k].cls:''); val.textContent=dkpis[k].value;
+    card.appendChild(lbl); card.appendChild(val); kpiGrid.appendChild(card);
+  }
+  dc.appendChild(kpiGrid);
+
+  // AUM & Clients charts
+  var chartsRow = document.createElement('div'); chartsRow.className='charts-row';
+  chartsRow.appendChild(buildChartBox('staticAumChart', 'Total AUM Trend (Cr)'));
+  chartsRow.appendChild(buildChartBox('staticClientsChart', 'Total Clients Trend'));
+  dc.appendChild(chartsRow);
+
+  // Performance & Sales charts
+  var perfData=[], salesData=[];
+  for (var i=0; i<series.length; i++) {
+    if (series[i].performance_pct != null) perfData.push(series[i]);
+    if (series[i].gross_sales_crores != null) salesData.push(series[i]);
+  }
+  var chartsRow2 = document.createElement('div'); chartsRow2.className='charts-row';
+  if (perfData.length > 0) chartsRow2.appendChild(buildChartBox('staticPerfChart', 'Monthly Performance %'));
+  if (salesData.length > 0) chartsRow2.appendChild(buildChartBox('staticSalesChart', 'Gross Sales Trend (Cr)'));
+  if (chartsRow2.children.length > 0) dc.appendChild(chartsRow2);
+
+  // Monthly data table
+  var tblSec = document.createElement('div'); tblSec.className='chart-container';
+  var tblTitle = document.createElement('div'); tblTitle.className='chart-title'; tblTitle.textContent='Monthly Data';
+  tblSec.appendChild(tblTitle);
+  var tbl = document.createElement('table'); tbl.className='data-table';
+  var thead = document.createElement('thead'); var hrow = document.createElement('tr');
+  ['Month','AUM (Cr)','Clients','Disc. AUM','Sales (Cr)','Return %'].forEach(function(h){
+    var th = document.createElement('th'); th.textContent=h; if(h!=='Month') th.className='num'; hrow.appendChild(th);
+  });
+  thead.appendChild(hrow); tbl.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  for (var i=series.length-1; i>=0; i--) {
+    var r=series[i]; var tr=document.createElement('tr');
+    [dateStr(r.year,r.month), fmtCr(r.total_aum_crores), fmt(r.total_clients),
+     fmtCr(r.disc_aum_crores), fmtCr(r.gross_sales_crores),
+     r.performance_pct != null ? r.performance_pct.toFixed(2)+'%' : '-'
+    ].forEach(function(v, idx){
+      var td = document.createElement('td'); td.textContent=v; if(idx>0) td.className='num'; tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  tbl.appendChild(tbody);
+  var tblWrap = document.createElement('div'); tblWrap.style.cssText='overflow-x:auto;max-height:400px;overflow-y:auto;';
+  tblWrap.appendChild(tbl); tblSec.appendChild(tblWrap);
+  dc.appendChild(tblSec);
+
+  // Draw charts after DOM is ready
+  setTimeout(function(){
+    var aumD=[], cliD=[], prfD=[], slsD=[], lbls=[];
+    for (var i=0; i<series.length; i++) {
+      var r=series[i]; var l=dateStr(r.year,r.month); lbls.push(l);
+      aumD.push({x:i, y:r.total_aum_crores||0, label:l});
+      cliD.push({x:i, y:r.total_clients||0, label:l});
+      if (r.performance_pct != null) prfD.push({x:i, y:r.performance_pct, label:l});
+      if (r.gross_sales_crores != null) slsD.push({x:i, y:r.gross_sales_crores, label:l});
+    }
+    drawLineChart('staticAumChart', [{data:aumD,label:'AUM (Cr)',color:'#6c8cff'}], {xLabels:lbls});
+    drawLineChart('staticClientsChart', [{data:cliD,label:'Clients',color:'#4ecdc4'}], {xLabels:lbls});
+    if (prfD.length > 0) drawLineChart('staticPerfChart', [{data:prfD,label:'Return %',color:'#ffd93d'}], {xLabels:lbls});
+    if (slsD.length > 0) drawLineChart('staticSalesChart', [{data:slsD,label:'Sales (Cr)',color:'#ff6b6b'}], {xLabels:lbls});
+  }, 50);
 }
 
 function renderFullDetail(fundData, rawData) {
