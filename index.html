@@ -106,6 +106,25 @@
   .era-new { background:rgba(78,205,196,0.2); color:var(--green); }
   .expand-all-btn { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:6px 14px; color:var(--text); cursor:pointer; font-size:12px; margin-bottom:12px; }
   .expand-all-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* Tracker */
+  .tracker-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px; margin-bottom:20px; }
+  .tracker-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; }
+  .tracker-card.latest { border-color:var(--accent); }
+  .tracker-month { font-size:18px; font-weight:700; margin-bottom:8px; }
+  .tracker-bar-bg { background:var(--surface2); border-radius:6px; height:28px; position:relative; overflow:hidden; margin-bottom:8px; }
+  .tracker-bar-fill { height:100%; border-radius:6px; transition:width .5s; display:flex; align-items:center; justify-content:flex-end; padding-right:8px; font-size:12px; font-weight:600; }
+  .tracker-bar-fill.full { background:var(--green); }
+  .tracker-bar-fill.partial { background:linear-gradient(90deg, var(--accent), #a78bfa); }
+  .tracker-bar-fill.low { background:linear-gradient(90deg, var(--accent3), #ff9f43); }
+  .tracker-stats { display:flex; justify-content:space-between; font-size:13px; color:var(--text2); margin-bottom:6px; }
+  .tracker-stats .reported { color:var(--green); font-weight:600; }
+  .tracker-stats .pending { color:var(--yellow); font-weight:600; }
+  .tracker-pending-list { max-height:0; overflow:hidden; transition:max-height .3s; }
+  .tracker-pending-list.open { max-height:400px; overflow-y:auto; }
+  .tracker-toggle { background:none; border:1px solid var(--border); border-radius:4px; padding:4px 10px; color:var(--accent); cursor:pointer; font-size:12px; }
+  .tracker-toggle:hover { border-color:var(--accent); background:var(--surface2); }
+  .pending-pm { padding:3px 0; font-size:12px; color:var(--text2); border-bottom:1px solid rgba(45,51,72,0.3); }
 </style>
 </head>
 <body>
@@ -120,6 +139,7 @@
   <div class="tab" data-tab="rankings">PM Rankings</div>
   <div class="tab" data-tab="detail">PM Detail</div>
   <div class="tab" data-tab="compare">Compare</div>
+  <div class="tab" data-tab="tracker">Tracker</div>
 </div>
 
 <div class="content">
@@ -196,6 +216,11 @@
       </div>
     </div>
   </div>
+
+  <div id="tracker" class="tab-content">
+    <div class="kpi-grid" id="trackerKpis"></div>
+    <div id="trackerGrid" class="tracker-grid"></div>
+  </div>
 </div>
 
 <div class="tooltip" id="tooltip"></div>
@@ -221,6 +246,7 @@ async function loadData() {
   renderOverview();
   renderRankings();
   setupCompare();
+  renderTracker();
 }
 
 function fmt(n, dec) {
@@ -489,6 +515,107 @@ function renderTable() {
   }
 }
 
+// =================== TRACKER ===================
+var MONTH_NAMES = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function renderTracker() {
+  var tracker = DATA.monthly_tracker;
+  if (!tracker || !tracker.length) return;
+
+  var totalReg = DATA.total_registered || 636;
+  var latest = tracker[tracker.length - 1];
+  var pct = (latest.reported / latest.expected * 100).toFixed(1);
+
+  // KPIs
+  var kpiEl = document.getElementById('trackerKpis');
+  while(kpiEl.firstChild) kpiEl.removeChild(kpiEl.firstChild);
+  var kpis = [
+    {label:'Latest Month', value:MONTH_NAMES[latest.month]+' '+latest.year, cls:'blue', sub:'Most recent scrape period'},
+    {label:'Reported', value:String(latest.reported), cls:'green', sub:pct+'% of expected PMs'},
+    {label:'Pending', value:String(latest.expected - latest.reported), cls:latest.expected - latest.reported > 0 ? '' : 'green',
+     sub:latest.expected - latest.reported > 0 ? 'Re-run scraper to fetch' : 'All caught up!'},
+    {label:'Total Registered', value:String(totalReg), cls:'', sub:'All-time PMs in SEBI registry'}
+  ];
+  for (var k=0; k<kpis.length; k++) {
+    var card = document.createElement('div'); card.className='kpi';
+    var lbl = document.createElement('div'); lbl.className='kpi-label'; lbl.textContent=kpis[k].label;
+    var val = document.createElement('div'); val.className='kpi-value'+(kpis[k].cls?' '+kpis[k].cls:''); val.textContent=kpis[k].value;
+    var sub = document.createElement('div'); sub.className='kpi-sub'; sub.textContent=kpis[k].sub;
+    card.appendChild(lbl); card.appendChild(val); card.appendChild(sub);
+    kpiEl.appendChild(card);
+  }
+
+  // Month cards (reverse so latest first)
+  var grid = document.getElementById('trackerGrid');
+  while(grid.firstChild) grid.removeChild(grid.firstChild);
+
+  for (var i=tracker.length-1; i>=0; i--) {
+    var t = tracker[i];
+    var pendingCount = t.expected - t.reported;
+    var pctFill = t.expected > 0 ? (t.reported / t.expected * 100) : 100;
+    var barClass = pctFill >= 95 ? 'full' : pctFill >= 70 ? 'partial' : 'low';
+    var isLatest = i === tracker.length - 1;
+
+    var cardDiv = document.createElement('div');
+    cardDiv.className = 'tracker-card' + (isLatest ? ' latest' : '');
+
+    var monthTitle = document.createElement('div');
+    monthTitle.className = 'tracker-month';
+    monthTitle.textContent = MONTH_NAMES[t.month] + ' ' + t.year;
+    cardDiv.appendChild(monthTitle);
+
+    var stats = document.createElement('div');
+    stats.className = 'tracker-stats';
+    var repSpan = document.createElement('span');
+    repSpan.className = 'reported';
+    repSpan.textContent = t.reported + ' reported';
+    var pendSpan = document.createElement('span');
+    pendSpan.className = 'pending';
+    pendSpan.textContent = pendingCount + ' pending';
+    stats.appendChild(repSpan);
+    stats.appendChild(pendSpan);
+    cardDiv.appendChild(stats);
+
+    var barBg = document.createElement('div');
+    barBg.className = 'tracker-bar-bg';
+    var barFill = document.createElement('div');
+    barFill.className = 'tracker-bar-fill ' + barClass;
+    barFill.style.width = pctFill.toFixed(1) + '%';
+    barFill.textContent = pctFill.toFixed(0) + '%';
+    barBg.appendChild(barFill);
+    cardDiv.appendChild(barBg);
+
+    var expLine = document.createElement('div');
+    expLine.style.cssText = 'font-size:12px;color:var(--text2);margin-bottom:8px;';
+    expLine.textContent = 'Expected: ' + t.expected + ' of ' + totalReg + ' registered';
+    cardDiv.appendChild(expLine);
+
+    if (pendingCount > 0 && t.pending_names && t.pending_names.length > 0) {
+      var toggleBtn = document.createElement('button');
+      toggleBtn.className = 'tracker-toggle';
+      toggleBtn.textContent = 'Show ' + pendingCount + ' pending PMs';
+      var pendList = document.createElement('div');
+      pendList.className = 'tracker-pending-list';
+      for (var p=0; p<t.pending_names.length; p++) {
+        var pmDiv = document.createElement('div');
+        pmDiv.className = 'pending-pm';
+        pmDiv.textContent = (p+1) + '. ' + t.pending_names[p];
+        pendList.appendChild(pmDiv);
+      }
+      (function(btn, list) {
+        btn.addEventListener('click', function() {
+          var open = list.classList.toggle('open');
+          btn.textContent = open ? 'Hide pending PMs' : 'Show ' + list.children.length + ' pending PMs';
+        });
+      })(toggleBtn, pendList);
+      cardDiv.appendChild(toggleBtn);
+      cardDiv.appendChild(pendList);
+    }
+
+    grid.appendChild(cardDiv);
+  }
+}
+
 // =================== PM DETAIL ===================
 var currentDetailMonth = null;
 var currentDetailData = null;
@@ -519,12 +646,8 @@ function showDetail(pmName) {
     while(dc.firstChild) dc.removeChild(dc.firstChild);
     var errP = document.createElement('p');
     errP.className = 'detail-loading';
-    errP.textContent = 'Detailed PM drill-down requires the local server (1.4 GB database).';
+    errP.textContent = 'Error: ' + err.message + '. Make sure server.py is running.';
     dc.appendChild(errP);
-    var errP2 = document.createElement('p');
-    errP2.className = 'detail-loading';
-    errP2.textContent = 'Use the Overview, Rankings, and Compare tabs to explore all 636 PMs.';
-    dc.appendChild(errP2);
   });
 }
 
