@@ -677,7 +677,23 @@ function showDetail(pmName) {
 }
 
 function renderStaticDetail(pmName) {
-  renderFundCentricDetail(pmName, null, null);
+  // Build fundData from embedded pm_details in dashboard_data.json
+  var detail = DATA.pm_details ? DATA.pm_details[pmName] : null;
+  var staticFundData = null;
+  if (detail) {
+    staticFundData = {
+      pm_name: pmName,
+      fund_aum_history: detail.fund_aum_history || {},
+      services: detail.services || [],
+      general_info: {month: null, data: detail.general_info || []},
+      summary_aum: {month: null, data: detail.summary_aum || []},
+      fund_flows: {month: null, data: detail.fund_flows || []},
+      turnover: {month: null, data: detail.turnover || []},
+      complaints: {month: null, data: detail.complaints || []},
+      summaries: (pmSeriesMap[pmName] || [])
+    };
+  }
+  renderFundCentricDetail(pmName, staticFundData, null);
 }
 
 function renderFullDetail(fundData, rawData) {
